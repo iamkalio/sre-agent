@@ -1,0 +1,157 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sre-playground-app
+    ports:
+      - "8000:8000"
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_SERVICE_NAME=sre-playground
+    depends_on:
+      otel-collector:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - sre-net
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: sre-otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./config/otel/otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8888:8888"   # Collector metrics
+    depends_on:
+      - tempo
+      - loki
+    restart: unless-stopped
+    networks:
+      - sre-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sre-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.enable-remote-write-receiver"
+      - "--enable-feature=exemplar-storage"
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    networks:
+      - sre-net
+
+  loki:
+    image: grafana/loki:latest
+    container_name: sre-loki
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./config/loki/loki-config.yaml:/etc/loki/config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+    networks:
+      - sre-net
+
+  tempo:
+    image: grafana/tempo:2.7.2
+    container_name: sre-tempo
+    command: ["-config.file=/etc/tempo/config.yaml"]
+    volumes:
+      - ./config/tempo/tempo-config.yaml:/etc/tempo/config.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200"   # Tempo HTTP
+      - "9095:9095"   # Tempo gRPC
+    restart: unless-stopped
+    networks:
+      - sre-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: sre-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - ./config/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./config/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./config/grafana/provisioning/dashboard-definitions:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+    restart: unless-stopped
+    networks:
+      - sre-net
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: sre-alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    volumes:
+      - ./config/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+    depends_on:
+      - sre-agent
+    restart: unless-stopped
+    networks:
+      - sre-net
+
+  sre-agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    container_name: sre-agent
+    ports:
+      - "8100:8100"
+    env_file:
+      - .env
+    environment:
+      - AGENT_LLM_PROVIDER=${AGENT_LLM_PROVIDER:-openai}
+      - AGENT_ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - AGENT_OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - AGENT_LLM_MODEL=${AGENT_LLM_MODEL:-gpt-4o}
+      - AGENT_PROMETHEUS_URL=http://prometheus:9090
+      - AGENT_LOKI_URL=http://loki:3100
+      - AGENT_TEMPO_URL=http://tempo:3200
+    volumes:
+      - agent-data:/opt/agent/data
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+    restart: unless-stopped
+    networks:
+      - sre-net
+
+volumes:
+  prometheus-data:
+  loki-data:
+  tempo-data:
+  grafana-data:
+  agent-data:
+
+networks:
+  sre-net:
+    driver: bridge

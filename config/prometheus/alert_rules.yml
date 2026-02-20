@@ -1,0 +1,47 @@
+groups:
+  - name: sre-playground-alerts
+    rules:
+      - alert: HighCPUSpikes
+        expr: rate(cpu_spike_total[5m]) > 0.1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Frequent CPU spike simulations detected"
+          description: "CPU spikes are being triggered at a rate of {{ $value }}/sec over the last 5 minutes."
+
+      - alert: HighErrorRate
+        expr: rate(app_errors_total[5m]) > 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate detected"
+          description: "Application errors at {{ $value }}/sec over the last 5 minutes."
+
+      - alert: HighRequestLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p95 request latency"
+          description: "95th percentile latency is {{ $value }}s."
+
+      - alert: HighMemoryUsage
+        expr: app_memory_usage_bytes > 200 * 1024 * 1024
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage in SRE Playground app"
+          description: "Memory usage is {{ $value | humanize }} bytes."
+
+      - alert: ServiceDown
+        expr: up{job="sre-playground"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "SRE Playground app is down"
+          description: "The FastAPI service has been unreachable for 30 seconds."
