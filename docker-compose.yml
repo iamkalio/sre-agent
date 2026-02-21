@@ -118,6 +118,25 @@ services:
     networks:
       - sre-net
 
+  chromadb:
+    image: chromadb/chroma:0.6.3
+    container_name: sre-chromadb
+    environment:
+      - ANONYMIZED_TELEMETRY=false
+    volumes:
+      - chroma-data:/chroma/chroma
+    ports:
+      - "8200:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - sre-net
+
   sre-agent:
     build:
       context: ./agent
@@ -135,12 +154,19 @@ services:
       - AGENT_PROMETHEUS_URL=http://prometheus:9090
       - AGENT_LOKI_URL=http://loki:3100
       - AGENT_TEMPO_URL=http://tempo:3200
+      - AGENT_CHROMA_HOST=chromadb
+      - AGENT_CHROMA_PORT=8000
     volumes:
       - agent-data:/opt/agent/data
     depends_on:
-      - prometheus
-      - loki
-      - tempo
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+      chromadb:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - sre-net
@@ -150,6 +176,7 @@ volumes:
   loki-data:
   tempo-data:
   grafana-data:
+  chroma-data:
   agent-data:
 
 networks:

@@ -20,7 +20,8 @@ class Settings(BaseSettings):
 
     # Knowledge base
     knowledge_dir: str = "/opt/agent/knowledge/runbooks"
-    chroma_persist_dir: str = "/opt/agent/data/chroma"
+    chroma_host: str = "chromadb"
+    chroma_port: int = 8000
 
     # Investigation tuning
     max_investigation_iterations: int = 6

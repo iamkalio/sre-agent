@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 
 import chromadb
-from chromadb.config import Settings as ChromaSettings
 from langchain_core.documents import Document
 from langchain_text_splitters import MarkdownTextSplitter
 
@@ -18,14 +17,13 @@ _COLLECTION_NAME = "sre_knowledge"
 
 
 class KnowledgeStore:
-    """Vector store backed by ChromaDB for runbook and incident retrieval."""
+    """Vector store backed by a remote ChromaDB server."""
 
     def __init__(self) -> None:
-        self._client = chromadb.Client(ChromaSettings(
-            anonymized_telemetry=False,
-            is_persistent=True,
-            persist_directory=settings.chroma_persist_dir,
-        ))
+        self._client = chromadb.HttpClient(
+            host=settings.chroma_host,
+            port=settings.chroma_port,
+        )
         self._collection = self._client.get_or_create_collection(
             name=_COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"},
