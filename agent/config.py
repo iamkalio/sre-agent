@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     chroma_host: str = "chromadb"
     chroma_port: int = 8000
 
+    # Redis
+    redis_url: str = "redis://redis:6379/0"
+    dedup_window_seconds: int = 300
+    max_concurrent_investigations: int = 3
+    investigation_timeout_seconds: int = 600
+
     # Investigation tuning
     max_investigation_iterations: int = 6
     confidence_threshold: float = 0.7

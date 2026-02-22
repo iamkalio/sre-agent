@@ -13,12 +13,14 @@ from agent.enrichment.context import ContextBuilder
 from agent.enrichment.correlator import SignalCorrelator
 from agent.enrichment.knowledge import KnowledgeStore
 from agent.ingestion.models import NormalizedAlert
-from agent.ingestion.receiver import register_investigation_callback, router as alert_router
+from agent.ingestion.receiver import router as alert_router
 from agent.investigation.executor import InvestigationExecutor
 from agent.investigation.graph import compile_investigation_graph
 from agent.investigation.tools.loki import LokiClient
 from agent.investigation.tools.prometheus import PrometheusClient
 from agent.investigation.tools.tempo import TempoClient
+from agent.queue.redis_client import close_redis, get_redis
+from agent.queue.worker import InvestigationWorker
 from agent.reporting.artifacts import ArtifactStore
 
 logging.basicConfig(
@@ -37,6 +39,7 @@ _correlator: SignalCorrelator | None = None
 _prometheus: PrometheusClient | None = None
 _loki: LokiClient | None = None
 _tempo: TempoClient | None = None
+_worker: InvestigationWorker | None = None
 
 
 def _build_llm():
@@ -61,10 +64,15 @@ def _build_llm():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global knowledge, artifacts, _compiled_graph
+    global knowledge, artifacts, _compiled_graph, _worker
     global _correlator, _prometheus, _loki, _tempo
 
     logger.info("Initializing SRE Agent...")
+
+    # Redis — verify connectivity
+    r = await get_redis()
+    await r.ping()
+    logger.info("Redis connected: %s", settings.redis_url)
 
     # Knowledge store (non-fatal — agent can still operate without runbooks)
     try:
@@ -94,18 +102,21 @@ async def lifespan(app: FastAPI):
     # Artifact store
     artifacts = ArtifactStore(knowledge)
 
-    # Wire up the investigation callback
-    register_investigation_callback(_run_investigation)
+    # Investigation worker — pulls from Redis stream with concurrency control
+    _worker = InvestigationWorker(_run_investigation)
+    await _worker.start()
 
     logger.info("SRE Agent ready — listening on %s:%d", settings.host, settings.port)
 
     yield
 
     # Cleanup
+    await _worker.stop()
     await _correlator.close()
     await _prometheus.close()
     await _loki.close()
     await _tempo.close()
+    await close_redis()
     logger.info("SRE Agent shut down")
 
 
@@ -160,6 +171,38 @@ async def health():
         "status": "healthy",
         "knowledge_loaded": knowledge is not None,
         "graph_ready": _compiled_graph is not None,
+        "worker_running": _worker is not None and _worker._running,
+    }
+
+
+@app.get("/queue/stats")
+async def queue_stats():
+    """Show current queue depth and consumer group info."""
+    r = await get_redis()
+    from agent.queue.redis_client import CONSUMER_GROUP, STREAM_KEY
+
+    stream_len = await r.xlen(STREAM_KEY)
+
+    try:
+        groups = await r.xinfo_groups(STREAM_KEY)
+    except Exception:
+        groups = []
+
+    group_info = {}
+    for g in groups:
+        if g.get("name") == CONSUMER_GROUP:
+            group_info = {
+                "pending": g.get("pending", 0),
+                "consumers": g.get("consumers", 0),
+                "last_delivered_id": g.get("last-delivered-id", ""),
+            }
+            break
+
+    return {
+        "stream_length": stream_len,
+        "consumer_group": group_info,
+        "max_concurrent": settings.max_concurrent_investigations,
+        "dedup_window_seconds": settings.dedup_window_seconds,
     }
 
 

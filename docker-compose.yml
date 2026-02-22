@@ -118,6 +118,23 @@ services:
     networks:
       - sre-net
 
+  redis:
+    image: redis:7-alpine
+    container_name: sre-redis
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - sre-net
+
   chromadb:
     image: chromadb/chroma:0.6.3
     container_name: sre-chromadb
@@ -156,6 +173,7 @@ services:
       - AGENT_TEMPO_URL=http://tempo:3200
       - AGENT_CHROMA_HOST=chromadb
       - AGENT_CHROMA_PORT=8000
+      - AGENT_REDIS_URL=redis://redis:6379/0
     volumes:
       - agent-data:/opt/agent/data
     depends_on:
@@ -167,6 +185,8 @@ services:
         condition: service_started
       chromadb:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - sre-net
@@ -176,6 +196,7 @@ volumes:
   loki-data:
   tempo-data:
   grafana-data:
+  redis-data:
   chroma-data:
   agent-data:
 
