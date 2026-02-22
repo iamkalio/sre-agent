@@ -52,6 +52,10 @@ docker compose up --build
 | POST   | `/simulate/memory`  | Memory allocation (default 256MB) |
 | GET    | `/metrics`          | Prometheus metrics                |
 
+## Sample RCA Report
+
+![Sample RCA Report](assets/report.png)
+
 ## Agent API Endpoints
 
 | Method | Path                          | Description                          |
