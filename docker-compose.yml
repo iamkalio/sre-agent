@@ -1,3 +1,4 @@
+#  Application — the service being monitored
 services:
   app:
     build:
@@ -16,6 +17,7 @@ services:
     networks:
       - sre-net
 
+#  Observability Stack — collects, stores, and visualises signals
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     container_name: sre-otel-collector
@@ -118,6 +120,7 @@ services:
     networks:
       - sre-net
 
+#  AI Agent Stack — investigates alerts and produces RCA reports
   redis:
     image: redis:7-alpine
     container_name: sre-redis
@@ -191,6 +194,7 @@ services:
     networks:
       - sre-net
 
+#  Volumes & Networks
 volumes:
   prometheus-data:
   loki-data:
