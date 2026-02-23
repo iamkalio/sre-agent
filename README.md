@@ -86,3 +86,7 @@ docker compose up --build
 - **Metrics**: Prometheus client → scraped by Prometheus → Grafana
 - **Alerts**: Prometheus alert rules → Alertmanager → SRE Agent
 
+## Resource
+
+- [Redis](https://medium.com/@sohail_saifi/how-redis-persistence-actually-works-and-when-it-fails-c3715d11529f)
+- [Chroma](https://abhishektatachar.medium.com/run-chroma-db-on-a-local-machine-and-as-a-docker-container-a9d4b91d2a97)

@@ -153,7 +153,7 @@ async def _run_investigation(alert: NormalizedAlert) -> None:
         logger.exception("Investigation failed for alert=%s", alert.id)
 
 
-# ── FastAPI app ───────────────────────────────────────────────────
+# FastAPI app 
 
 app = FastAPI(
     title="SRE Investigation Agent",
